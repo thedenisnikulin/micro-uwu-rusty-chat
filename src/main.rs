@@ -2,6 +2,8 @@ use std::io::Write;
 use std::io::{self, Read};
 use std::net::{self, SocketAddr, TcpStream};
 use std::process::exit;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 fn main() {
     let stdin = io::stdin();
@@ -23,6 +25,8 @@ fn main() {
     }
 }
 
+type ClientHandle = (TcpStream, SocketAddr);
+
 fn connect<A>(addr: A)
 where
     A: net::ToSocketAddrs,
@@ -32,19 +36,19 @@ where
     println!("connected");
     let mut buf0 = String::new();
     print!("cmd: ");
-    io::stdout().flush();
+    io::stdout().flush().unwrap();
     io::stdin().read_line(&mut buf0).unwrap();
     buf0.pop();
     println!("buf0 is {}", buf0);
     if buf0 == "recv" {
         buf0.clear();
         println!("gonna recv");
-        stream.read_to_string(&mut buf0);
+        stream.read_to_string(&mut buf0).unwrap();
         println!("received: {}", buf0);
         exit(0);
     };
     println!("gonna write");
-    stream.write("fuckyou".as_bytes());
+    stream.write("no bad words :)".as_bytes()).unwrap();
 }
 
 fn create_server<A>(addr: A)
@@ -53,18 +57,34 @@ where
 {
     println!("create");
     let mut listener = net::TcpListener::bind(addr).unwrap();
-    let mut conn_vec: Vec<(TcpStream, SocketAddr)> = Vec::with_capacity(5);
-    for i in 1..=2 {
+    let mut peers = Vec::<ClientHandle>::with_capacity(5);
+    for i in (1..=2).rev() {
         println!("Waiting for {} people to connect...", i);
         let sock = listener.accept().unwrap();
-        conn_vec.push(sock);
+        peers.push(sock);
+        todo!("a mess");
+        thread::spawn(|| handle_client(peers.last_mut().unwrap()));
     }
     loop {
         let mut buf = String::new();
-        conn_vec[1].0.read_to_string(&mut buf);
+        peers[1].0.read_to_string(&mut buf).unwrap();
         println!("buf: {}", buf);
-        conn_vec[0].0.write(buf.as_bytes());
+        peers[0].0.write(buf.as_bytes()).unwrap();
         break;
+    }
+}
+
+fn handle_client(client: &mut ClientHandle) {}
+
+trait Broadcast {
+    fn broadcast(&mut self, msg: &str);
+}
+
+impl Broadcast for Vec<ClientHandle> {
+    fn broadcast(&mut self, msg: &str) {
+        for peer in self {
+            peer.0.write(msg.as_bytes()).unwrap();
+        }
     }
 }
 
@@ -82,7 +102,10 @@ impl StdinReader {
         io::stdout().flush();
         match self.stdin.read_line(buf) {
             Ok(v) if v < 2 => Err(()),
-            Ok(v) => { buf.pop(); Ok(()) },
+            Ok(v) => {
+                buf.pop();
+                Ok(())
+            }
             Err(e) => panic!("io err"),
         }
     }
