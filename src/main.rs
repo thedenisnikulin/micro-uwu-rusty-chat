@@ -2,8 +2,9 @@ use std::io::Write;
 use std::io::{self, Read};
 use std::net::{self, SocketAddr, TcpStream};
 use std::process::exit;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
+use std::sync::mpsc;
 
 fn main() {
     let stdin = io::stdin();
@@ -56,34 +57,42 @@ where
     A: net::ToSocketAddrs,
 {
     println!("create");
-    let mut listener = net::TcpListener::bind(addr).unwrap();
-    let mut peers = Vec::<ClientHandle>::with_capacity(5);
+    let listener = net::TcpListener::bind(addr).unwrap();
+    let mut peers = Vec::<Arc<ClientHandle>>::with_capacity(5);
+    let (sender, receiver) = mpsc::channel::<String>();
+
     for i in (1..=2).rev() {
         println!("Waiting for {} people to connect...", i);
         let sock = listener.accept().unwrap();
-        peers.push(sock);
-        todo!("a mess");
-        thread::spawn(|| handle_client(peers.last_mut().unwrap()));
+        peers.push(Arc::new(sock));
+        let peers_ref = Arc::clone(peers.last().unwrap());
+        let tx = sender.clone();
+        thread::spawn(move || read_from_client(peers_ref, tx));
     }
+
     loop {
-        let mut buf = String::new();
-        peers[1].0.read_to_string(&mut buf).unwrap();
-        println!("buf: {}", buf);
-        peers[0].0.write(buf.as_bytes()).unwrap();
-        break;
+        let recvd = receiver.recv().unwrap();
+        peers.broadcast(&recvd);
     }
 }
 
-fn handle_client(client: &mut ClientHandle) {}
+fn read_from_client(client: Arc<ClientHandle>, tx: mpsc::Sender<String>) {
+    loop {
+        let mut stream = &client.0;
+        let mut buf = String::new();
+        stream.read_to_string(&mut buf).unwrap();
+        tx.send(buf).unwrap();
+    }
+}
 
 trait Broadcast {
     fn broadcast(&mut self, msg: &str);
 }
 
-impl Broadcast for Vec<ClientHandle> {
+impl Broadcast for Vec<Arc<ClientHandle>> {
     fn broadcast(&mut self, msg: &str) {
         for peer in self {
-            peer.0.write(msg.as_bytes()).unwrap();
+            (&peer.0).write(msg.as_bytes()).unwrap();
         }
     }
 }
