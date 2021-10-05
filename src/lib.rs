@@ -2,7 +2,7 @@ pub mod client;
 pub mod server;
 
 use std::io::Write;
-use std::io::{self, Read};
+use std::io;
 use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::sync::Arc;
@@ -15,6 +15,14 @@ pub trait Broadcast {
 
 // TODO make impl more general
 impl Broadcast for Vec<Arc<ClientHandle>> {
+    fn broadcast(&mut self, msg: &str) {
+        for peer in self {
+            (&peer.0).write(msg.as_bytes()).unwrap();
+        }
+    }
+}
+
+impl Broadcast for Vec<&Arc<ClientHandle>> {
     fn broadcast(&mut self, msg: &str) {
         for peer in self {
             (&peer.0).write(msg.as_bytes()).unwrap();
@@ -36,7 +44,6 @@ impl AskInput for io::Stdin {
         ret
     }
 
-    // sry for this gonna refactor just lazy
     fn ask_input_cut(&mut self, input_msg: &str, mut buf: &mut String) -> io::Result<usize> {
         print!("{}", input_msg);
         io::stdout().flush().unwrap();

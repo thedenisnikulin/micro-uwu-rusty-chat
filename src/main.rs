@@ -1,20 +1,18 @@
-use mean_capybara::client::{self, Client};
+use log::*;
+use mean_capybara::client::Client;
 use mean_capybara::server::Server;
 use mean_capybara::AskInput;
-use std::io::Write;
-use std::io::{self, Read};
-use std::net::{self, SocketAddr, TcpStream};
+use std::io;
 use std::process::exit;
 use std::sync::Arc;
 use std::thread;
-use log::*;
 
 // TODO do smth with all unwraps
 
 fn main() {
     let mut buf = String::new();
     let mut stdin = io::stdin();
-    let mut client;
+    let client;
     let mut server;
 
     env_logger::init();
