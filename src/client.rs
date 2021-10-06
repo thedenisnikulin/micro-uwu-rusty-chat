@@ -36,7 +36,6 @@ impl Client {
         loop {
             let mut buf = String::new();
             stdin.ask_input("", &mut buf).unwrap();
-            //debug!("in client, input msg: {}", buf);
             (&self.stream).write_all(&buf.as_bytes()).unwrap();
         }
     }

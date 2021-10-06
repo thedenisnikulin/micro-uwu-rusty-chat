@@ -1,8 +1,8 @@
 use log::*;
-use std::io::{BufRead, BufReader, Read, Result};
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use std::process::exit;
-use std::sync::{mpsc, Arc};
+use std::io::{BufRead, BufReader, Result};
+use std::net::{TcpListener, ToSocketAddrs};
+use std::sync::mpsc::Sender;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use crate::{Broadcast, ClientHandle};
@@ -13,7 +13,20 @@ pub struct Message {
 }
 
 pub struct Server {
+    inner: Arc<ServerInner>,
+}
+
+struct ServerInner {
     listener: TcpListener,
+    peers: Mutex<Vec<Arc<ClientHandle>>>,
+}
+
+impl Clone for Server {
+    fn clone(&self) -> Self {
+        Server {
+            inner: Arc::clone(&self.inner),
+        }
+    }
 }
 
 impl Server {
@@ -22,32 +35,35 @@ impl Server {
         A: ToSocketAddrs,
     {
         Ok(Server {
-            listener: TcpListener::bind(addr)?,
+            inner: Arc::new(ServerInner {
+                listener: TcpListener::bind(addr)?,
+                peers: Mutex::new(Vec::<Arc<ClientHandle>>::new()),
+            }),
         })
     }
 
     pub fn handle_clients(&mut self) {
-        println!("create");
-        let mut peers = Vec::<Arc<ClientHandle>>::with_capacity(5);
         let (sender, receiver) = mpsc::channel::<Message>();
 
-        for i in (1..=2).rev() {
-            println!("Waiting for {} people to connect...", i);
-            let sock = self.listener.accept().unwrap();
-            peers.push(Arc::new(sock));
+        // Spawn acceptor thread
+        thread::spawn({
+            let mut local_self = self.clone();
+            move || local_self.accept_connections(sender)
+        });
 
-            let peer_ref = Arc::clone(peers.last().unwrap());
-            let tx = sender.clone();
-            thread::spawn(move || Self::read_from_client(peer_ref, tx));
-        }
-
+        // Broadcast data received from reader thread
         loop {
             let msg = receiver.recv().unwrap();
-            debug!("received from reader thread: {}", msg.value);
+            debug!(
+                "Received from reader thread: {}, sender: {}",
+                msg.value, msg.sender.1
+            );
             if msg.value.len() < 1 {
-                peers.retain(|x| &x.1 != &msg.sender.1);
+                self.inner.peers.lock().unwrap()
+                    .retain(|x| &x.1 != &msg.sender.1);
+                debug!("Client dropped: {}", msg.sender.1);
             }
-            peers
+            self.inner.peers.lock().unwrap()
                 .iter()
                 .filter(|x| x.1 != msg.sender.1)
                 .collect::<Vec<_>>()
@@ -75,6 +91,19 @@ impl Server {
             if bytes_read < 1 {
                 break;
             };
+        }
+    }
+
+    fn accept_connections(&mut self, sender: Sender<Message>) {
+        loop {
+            let client_accepted = self.inner.listener.accept().unwrap();
+            debug!("Client accepted: {}", client_accepted.1);
+            let mut peers = self.inner.peers.lock().unwrap();
+            peers.push(Arc::new(client_accepted));
+
+            let peer_ref = Arc::clone(peers.last().unwrap());
+            let tx = sender.clone();
+            thread::spawn(move || Self::read_from_client(peer_ref, tx));
         }
     }
 }

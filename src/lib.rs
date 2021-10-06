@@ -1,8 +1,8 @@
 pub mod client;
 pub mod server;
 
-use std::io::Write;
 use std::io;
+use std::io::Write;
 use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::sync::Arc;
