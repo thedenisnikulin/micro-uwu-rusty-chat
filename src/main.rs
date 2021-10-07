@@ -1,7 +1,7 @@
 use log::*;
 use mean_capybara::client::Client;
+use mean_capybara::misc::AskInput;
 use mean_capybara::server::Server;
-use mean_capybara::AskInput;
 use std::io;
 use std::process::exit;
 use std::sync::Arc;
@@ -18,10 +18,10 @@ fn main() {
     env_logger::init();
 
     stdin
-        .ask_input_cut("[client] Enter the port to connect to: ", &mut buf)
+        .ask_input("[client] Enter the port to connect to: ", &mut buf)
         .unwrap();
     debug!("in main, buf: {}, len: {}", buf, buf.len());
-    if let Ok(c) = Client::connect(format!("127.0.0.1:{}", buf)) {
+    if let Ok(c) = Client::connect(format!("127.0.0.1:{}", &buf[..buf.len() - 1])) {
         client = Arc::new(c);
 
         let handle_recv = thread::spawn({
@@ -41,11 +41,11 @@ fn main() {
         buf.clear();
 
         stdin
-            .ask_input_cut("[server] Enter the port to bind on: ", &mut buf)
+            .ask_input("[server] Enter the port to bind on: ", &mut buf)
             .unwrap();
 
         debug!("in main, buf: {}, len: {}", buf, buf.len());
-        server = Server::bind(format!("127.0.0.1:{}", buf)).unwrap_or_else(|e| {
+        server = Server::bind(format!("127.0.0.1:{}", &buf[..buf.len() - 1])).unwrap_or_else(|e| {
             println!("Bye-bye!, {}", e);
             exit(0);
         });

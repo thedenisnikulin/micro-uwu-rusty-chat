@@ -1,7 +1,6 @@
-use crate::AskInput;
-use log::*;
+use crate::misc::AskInput;
 use std::{
-    io::{self, BufRead, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Write},
     net::*,
 };
 

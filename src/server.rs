@@ -5,7 +5,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
-use crate::{Broadcast, ClientHandle};
+use crate::misc::{Broadcast, ClientHandle};
 
 pub struct Message {
     pub value: String,
@@ -59,11 +59,17 @@ impl Server {
                 msg.value, msg.sender.1
             );
             if msg.value.len() < 1 {
-                self.inner.peers.lock().unwrap()
+                self.inner
+                    .peers
+                    .lock()
+                    .unwrap()
                     .retain(|x| &x.1 != &msg.sender.1);
                 debug!("Client dropped: {}", msg.sender.1);
             }
-            self.inner.peers.lock().unwrap()
+            self.inner
+                .peers
+                .lock()
+                .unwrap()
                 .iter()
                 .filter(|x| x.1 != msg.sender.1)
                 .collect::<Vec<_>>()
