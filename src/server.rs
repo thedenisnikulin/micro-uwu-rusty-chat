@@ -5,7 +5,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
-use crate::misc::{Broadcast, ClientHandle, Message, MessageResult};
+use crate::misc::{Broadcast, ClientHandle, MessageResult};
 
 pub struct Server {
     inner: Arc<ServerInner>,
@@ -50,42 +50,42 @@ impl Server {
             let msg_result = receiver.recv().unwrap();
 
             match msg_result.value {
-                Ok(msg_value) => self.inner.peers.lock().unwrap()
+                Ok(ref msg_value) => self
+                    .inner
+                    .peers
+                    .lock()
+                    .unwrap()
                     .iter()
                     .filter(|x| x.1 != msg_result.sender.1)
                     .collect::<Vec<_>>()
                     .broadcast(&msg_value),
-                Err(msg_value) => {
-                    self.inner.peers.lock().unwrap()
-                        .retain(|x| &x.1 != &msg_result.sender.1);
+                Err(ref msg_value) => {
+                    self.inner
+                        .peers
+                        .lock()
+                        .unwrap()
+                        .retain(|x| x.1 != msg_result.sender.1);
                     debug!("{} - {}", msg_result.sender.1, msg_value);
                 }
             }
         }
     }
 
-    fn read_from_client(client: Arc<ClientHandle>, tx: mpsc::Sender<MessageResult>) {
+    fn read_from_client(client: Arc<ClientHandle>, tx: Sender<MessageResult>) {
         let mut buf_reader = BufReader::new(&client.0);
         loop {
             let mut buf = String::new();
             let value = match buf_reader.read_line(&mut buf) {
                 Ok(n) if n < 1 => Err("Client disconnected.".to_string()),
                 Err(e) => Err(format!("Receiving message failed: {}", e)),
-                Ok(n) => Ok(buf),
+                Ok(_) => Ok(buf),
             };
 
-            debug!("read from client: {}, len: {}", buf, buf.len());
+            let is_err = value.is_err();
 
-            tx.send(MessageResult {
-                value,
-                sender: {
-                    let client = Arc::clone(&client);
-                    client
-                },
-            })
-            .unwrap();
+            tx.send(MessageResult::new(value, &client)).unwrap();
 
-            if value.is_err() {
+            if is_err {
                 break;
             };
         }
@@ -106,6 +106,11 @@ impl Server {
 
             let peer_ref = Arc::clone(peers.last().unwrap());
             let tx = sender.clone();
+            tx.send(MessageResult::new(Ok(format!(
+                "A new peer has connected: {}\n",
+                peer_ref.1
+            )), &peer_ref))
+            .unwrap();
             thread::spawn(move || Self::read_from_client(peer_ref, tx));
         }
     }

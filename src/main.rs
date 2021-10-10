@@ -7,8 +7,6 @@ use std::process::exit;
 use std::sync::Arc;
 use std::thread;
 
-// TODO do smth with all unwraps
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let mut buf = String::new();
@@ -16,9 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client;
     let mut server;
 
-    stdin
-        .ask_input("[client] Enter the port to connect to: ", &mut buf)
-        .unwrap();
+    stdin.ask_input("[client] Enter the port to connect to: ", &mut buf)?;
     debug!("in main, buf: {}, len: {}", buf, buf.len());
     if let Ok(c) = Client::connect(format!("127.0.0.1:{}", &buf[..buf.len() - 1])) {
         client = Arc::new(c);
@@ -37,12 +33,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         handle_send.join().unwrap()?;
         Ok(())
     } else {
-        // TODO handle error somehow (print it?)
         buf.clear();
 
-        stdin
-            .ask_input("[server] Enter the port to bind on: ", &mut buf)
-            .unwrap();
+        stdin.ask_input("[server] Enter the port to bind on: ", &mut buf)?;
 
         debug!("in main, buf: {}, len: {}", buf, buf.len());
         server = Server::bind(format!("127.0.0.1:{}", &buf[..buf.len() - 1]))?;

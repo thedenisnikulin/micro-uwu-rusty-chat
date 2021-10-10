@@ -12,6 +12,21 @@ pub struct MessageResult {
     pub sender: Arc<ClientHandle>,
 }
 
+impl MessageResult {
+    pub fn new(
+        value: std::result::Result<String, String>,
+        sender: &Arc<ClientHandle>,
+    ) -> MessageResult {
+        MessageResult {
+            value,
+            sender: {
+                let sender = Arc::clone(&sender);
+                sender
+            },
+        }
+    }
+}
+
 pub trait Broadcast {
     fn broadcast(&self, msg: &str);
 }
@@ -20,7 +35,7 @@ impl<B: Borrow<Arc<ClientHandle>>> Broadcast for Vec<B> {
     fn broadcast(&self, msg: &str) {
         for peer in self {
             (&peer.borrow().0 as &TcpStream)
-                .write(msg.as_bytes())
+                .write_all(msg.as_bytes())
                 .unwrap();
         }
     }
