@@ -5,12 +5,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
-use crate::misc::{Broadcast, ClientHandle};
-
-pub struct Message {
-    pub value: String,
-    pub sender: Arc<ClientHandle>,
-}
+use crate::misc::{Broadcast, ClientHandle, Message, MessageResult};
 
 pub struct Server {
     inner: Arc<ServerInner>,
@@ -43,8 +38,7 @@ impl Server {
     }
 
     pub fn handle_clients(&mut self) {
-        let (sender, receiver) = mpsc::channel::<Message>();
-
+        let (sender, receiver) = mpsc::channel::<MessageResult>();
         // Spawn acceptor thread
         thread::spawn({
             let mut local_self = self.clone();
@@ -53,56 +47,59 @@ impl Server {
 
         // Broadcast data received from reader thread
         loop {
-            let msg = receiver.recv().unwrap();
-            debug!(
-                "Received from reader thread: {}, sender: {}",
-                msg.value, msg.sender.1
-            );
-            if msg.value.len() < 1 {
-                self.inner
-                    .peers
-                    .lock()
-                    .unwrap()
-                    .retain(|x| &x.1 != &msg.sender.1);
-                debug!("Client dropped: {}", msg.sender.1);
+            let msg_result = receiver.recv().unwrap();
+
+            match msg_result.value {
+                Ok(msg_value) => self.inner.peers.lock().unwrap()
+                    .iter()
+                    .filter(|x| x.1 != msg_result.sender.1)
+                    .collect::<Vec<_>>()
+                    .broadcast(&msg_value),
+                Err(msg_value) => {
+                    self.inner.peers.lock().unwrap()
+                        .retain(|x| &x.1 != &msg_result.sender.1);
+                    debug!("{} - {}", msg_result.sender.1, msg_value);
+                }
             }
-            self.inner
-                .peers
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|x| x.1 != msg.sender.1)
-                .collect::<Vec<_>>()
-                .broadcast(&msg.value);
         }
     }
 
-    fn read_from_client(client: Arc<ClientHandle>, tx: mpsc::Sender<Message>) {
+    fn read_from_client(client: Arc<ClientHandle>, tx: mpsc::Sender<MessageResult>) {
         let mut buf_reader = BufReader::new(&client.0);
         loop {
             let mut buf = String::new();
-            let bytes_read = buf_reader.read_line(&mut buf).unwrap();
+            let value = match buf_reader.read_line(&mut buf) {
+                Ok(n) if n < 1 => Err("Client disconnected.".to_string()),
+                Err(e) => Err(format!("Receiving message failed: {}", e)),
+                Ok(n) => Ok(buf),
+            };
+
             debug!("read from client: {}, len: {}", buf, buf.len());
-            tx.send(Message {
-                value: buf,
+
+            tx.send(MessageResult {
+                value,
                 sender: {
                     let client = Arc::clone(&client);
                     client
                 },
             })
-            .unwrap_or_else(|err| {
-                eprintln!("[Server::read_from_client] err sending: {}", err);
-                panic!();
-            });
-            if bytes_read < 1 {
+            .unwrap();
+
+            if value.is_err() {
                 break;
             };
         }
     }
 
-    fn accept_connections(&mut self, sender: Sender<Message>) {
+    fn accept_connections(&mut self, sender: Sender<MessageResult>) {
         loop {
-            let client_accepted = self.inner.listener.accept().unwrap();
+            let client_accepted = match self.inner.listener.accept() {
+                Ok(client) => client,
+                Err(e) => {
+                    println!("Error accepting client: {}", e);
+                    continue;
+                }
+            };
             debug!("Client accepted: {}", client_accepted.1);
             let mut peers = self.inner.peers.lock().unwrap();
             peers.push(Arc::new(client_accepted));

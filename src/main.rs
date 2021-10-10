@@ -9,13 +9,12 @@ use std::thread;
 
 // TODO do smth with all unwraps
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
     let mut buf = String::new();
     let mut stdin = io::stdin();
     let client;
     let mut server;
-
-    env_logger::init();
 
     stdin
         .ask_input("[client] Enter the port to connect to: ", &mut buf)
@@ -34,8 +33,9 @@ fn main() {
             move || client.input_and_send()
         });
 
-        handle_recv.join().unwrap();
-        handle_send.join().unwrap();
+        handle_recv.join().unwrap()?;
+        handle_send.join().unwrap()?;
+        Ok(())
     } else {
         // TODO handle error somehow (print it?)
         buf.clear();
@@ -45,11 +45,10 @@ fn main() {
             .unwrap();
 
         debug!("in main, buf: {}, len: {}", buf, buf.len());
-        server = Server::bind(format!("127.0.0.1:{}", &buf[..buf.len() - 1])).unwrap_or_else(|e| {
-            println!("Bye-bye!, {}", e);
-            exit(0);
-        });
+        server = Server::bind(format!("127.0.0.1:{}", &buf[..buf.len() - 1]))?;
 
         server.handle_clients();
+
+        Ok(())
     }
 }

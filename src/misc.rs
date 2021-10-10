@@ -7,6 +7,11 @@ use std::{
 
 pub type ClientHandle = (TcpStream, SocketAddr);
 
+pub struct MessageResult {
+    pub value: std::result::Result<String, String>,
+    pub sender: Arc<ClientHandle>,
+}
+
 pub trait Broadcast {
     fn broadcast(&self, msg: &str);
 }
@@ -28,7 +33,7 @@ pub trait AskInput {
 impl AskInput for io::Stdin {
     fn ask_input(&mut self, input_msg: &str, mut buf: &mut String) -> io::Result<usize> {
         print!("{}", input_msg);
-        io::stdout().flush().unwrap();
+        io::stdout().flush()?;
         self.read_line(&mut buf)
     }
 }
