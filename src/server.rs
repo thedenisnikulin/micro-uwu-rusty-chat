@@ -5,7 +5,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
-use crate::misc::{Broadcast, ClientHandle, MessageResult};
+use crate::misc::{Broadcast, ClientHandle, MessageResult, Peer};
 
 pub struct Server {
     inner: Arc<ServerInner>,
@@ -13,7 +13,7 @@ pub struct Server {
 
 struct ServerInner {
     listener: TcpListener,
-    peers: Mutex<Vec<Arc<ClientHandle>>>,
+    peers: Mutex<Vec<Arc<Peer>>>,
 }
 
 impl Clone for Server {
@@ -32,7 +32,7 @@ impl Server {
         Ok(Server {
             inner: Arc::new(ServerInner {
                 listener: TcpListener::bind(addr)?,
-                peers: Mutex::new(Vec::<Arc<ClientHandle>>::new()),
+                peers: Mutex::new(Vec::<Arc<Peer>>::new()),
             }),
         })
     }
@@ -49,36 +49,40 @@ impl Server {
         loop {
             let msg_result = receiver.recv().unwrap();
 
-            match msg_result.value {
-                Ok(ref msg_value) => self
-                    .inner
+            if let Err(_) = msg_result.value {
+                self.inner
                     .peers
                     .lock()
                     .unwrap()
-                    .iter()
-                    .filter(|x| x.1 != msg_result.sender.1)
-                    .collect::<Vec<_>>()
-                    .broadcast(&msg_value),
-                Err(ref msg_value) => {
-                    self.inner
-                        .peers
-                        .lock()
-                        .unwrap()
-                        .retain(|x| x.1 != msg_result.sender.1);
-                    debug!("{} - {}", msg_result.sender.1, msg_value);
-                }
-            }
+                    .retain(|x| x.addr != msg_result.sender.addr);
+            };
+
+            let msg = match msg_result.value {
+                Ok(ref v) => v,
+                Err(ref v) => v,
+            };
+
+            self.inner
+                .peers
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|x| x.addr != msg_result.sender.addr)
+                .collect::<Vec<_>>()
+                .broadcast(msg);
         }
     }
 
-    fn read_from_client(client: Arc<ClientHandle>, tx: Sender<MessageResult>) {
-        let mut buf_reader = BufReader::new(&client.0);
+    fn read_from_client(client: Arc<Peer>, tx: Sender<MessageResult>) {
+        let mut buf_reader = BufReader::new(&client.stream);
         loop {
             let mut buf = String::new();
             let value = match buf_reader.read_line(&mut buf) {
-                Ok(n) if n < 1 => Err("Client disconnected.".to_string()),
-                Err(e) => Err(format!("Receiving message failed: {}", e)),
-                Ok(_) => Ok(buf),
+                Ok(n) if n < 1 => Err(format!("🌙 {} покидает нас, грусть :с 🌙\n", client.name)),
+                Err(e) => Err(format!("🌙 {} покидает нас, технические шоколадки: {} 🌙\n", client.name, e)),
+                Ok(_) => {
+                    Ok(format!("[🍃{}🍃]: {}", client.name, buf))
+                }
             };
 
             let is_err = value.is_err();
@@ -102,15 +106,30 @@ impl Server {
             };
             debug!("Client accepted: {}", client_accepted.1);
             let mut peers = self.inner.peers.lock().unwrap();
-            peers.push(Arc::new(client_accepted));
+            let mut buf_reader = BufReader::new(&client_accepted.0);
 
+            // read name
+            let mut name = String::new();
+            buf_reader.read_line(&mut name).unwrap();
+            name.pop(); // pop '\n'
+
+            // save to self.inner.peers
+            peers.push(Arc::new(Peer::new(
+                client_accepted.0,
+                client_accepted.1,
+                name,
+            )));
+
+            // clone & send by tx
             let peer_ref = Arc::clone(peers.last().unwrap());
             let tx = sender.clone();
-            tx.send(MessageResult::new(Ok(format!(
-                "A new peer has connected: {}\n",
-                peer_ref.1
-            )), &peer_ref))
+            tx.send(MessageResult::new(
+                Ok(format!("🍍 У нас новенький, поприветствуйте {} 🍍\n", peer_ref.name)),
+                &peer_ref,
+            ))
             .unwrap();
+
+            // spawn new reader thread
             thread::spawn(move || Self::read_from_client(peer_ref, tx));
         }
     }

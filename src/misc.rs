@@ -7,16 +7,25 @@ use std::{
 
 pub type ClientHandle = (TcpStream, SocketAddr);
 
+pub struct Peer {
+    pub stream: TcpStream,
+    pub addr: SocketAddr,
+    pub name: String,
+}
+
+impl Peer {
+    pub fn new(stream: TcpStream, addr: SocketAddr, name: String) -> Peer {
+        Peer { stream, addr, name }
+    }
+}
+
 pub struct MessageResult {
     pub value: std::result::Result<String, String>,
-    pub sender: Arc<ClientHandle>,
+    pub sender: Arc<Peer>,
 }
 
 impl MessageResult {
-    pub fn new(
-        value: std::result::Result<String, String>,
-        sender: &Arc<ClientHandle>,
-    ) -> MessageResult {
+    pub fn new(value: std::result::Result<String, String>, sender: &Arc<Peer>) -> MessageResult {
         MessageResult {
             value,
             sender: {
@@ -27,14 +36,14 @@ impl MessageResult {
     }
 }
 
-pub trait Broadcast {
+pub trait Broadcast<T> {
     fn broadcast(&self, msg: &str);
 }
 
-impl<B: Borrow<Arc<ClientHandle>>> Broadcast for Vec<B> {
+impl<B: Borrow<Arc<Peer>>> Broadcast<B> for Vec<B> {
     fn broadcast(&self, msg: &str) {
         for peer in self {
-            (&peer.borrow().0 as &TcpStream)
+            (&peer.borrow().stream as &TcpStream)
                 .write_all(msg.as_bytes())
                 .unwrap();
         }

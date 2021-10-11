@@ -22,7 +22,7 @@ impl Client {
             let mut buf = String::new();
             buf_reader.read_line(&mut buf)?;
             print!("\r\x1b[K"); // Jump to the beginning of the line
-            print!("челик: {}", buf); // '\n' is not used, it comes from buf
+            print!("{}", buf); // '\n' is not used, it comes from buf
         }
     }
 
