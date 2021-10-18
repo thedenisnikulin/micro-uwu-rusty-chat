@@ -1,11 +1,10 @@
-use log::*;
 use std::io::{BufRead, BufReader, Result};
 use std::net::{TcpListener, ToSocketAddrs};
 use std::sync::mpsc::Sender;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
-use crate::misc::{Broadcast, ClientHandle, MessageResult, Peer};
+use crate::misc::{Broadcast, MessageResult, Peer};
 
 pub struct Server {
     inner: Arc<ServerInner>,
@@ -39,7 +38,7 @@ impl Server {
 
     pub fn handle_clients(&mut self) {
         let (sender, receiver) = mpsc::channel::<MessageResult>();
-        // Spawn acceptor thread
+        // Spawn client acceptor thread
         thread::spawn({
             let mut local_self = self.clone();
             move || local_self.accept_connections(sender)
@@ -55,6 +54,7 @@ impl Server {
                     .lock()
                     .unwrap()
                     .retain(|x| x.addr != msg_result.sender.addr);
+                eprintln!("Client disconnected: {}", msg_result.sender.addr);
             };
 
             let msg = match msg_result.value {
@@ -78,11 +78,12 @@ impl Server {
         loop {
             let mut buf = String::new();
             let value = match buf_reader.read_line(&mut buf) {
-                Ok(n) if n < 1 => Err(format!("🌙 {} покидает нас, грусть :с 🌙\n", client.name)),
-                Err(e) => Err(format!("🌙 {} покидает нас, технические шоколадки: {} 🌙\n", client.name, e)),
-                Ok(_) => {
-                    Ok(format!("[🍃{}🍃]: {}", client.name, buf))
-                }
+                Ok(n) if n < 1 => Err(format!("🌧️ {} покидает нас, грусть :с 🌧️\n", client.name)),
+                Err(e) => Err(format!(
+                    "⛈️ {} покидает нас, небольшие технические шоколадки: {} ⛈️\n",
+                    client.name, e
+                )),
+                Ok(_) => Ok(format!("[🌈{}🌈]: {}", client.name, buf)),
             };
 
             let is_err = value.is_err();
@@ -100,11 +101,11 @@ impl Server {
             let client_accepted = match self.inner.listener.accept() {
                 Ok(client) => client,
                 Err(e) => {
-                    println!("Error accepting client: {}", e);
+                    eprintln!("Error accepting client: {}", e);
                     continue;
                 }
             };
-            debug!("Client accepted: {}", client_accepted.1);
+            eprintln!("Client accepted: {}", client_accepted.1);
             let mut peers = self.inner.peers.lock().unwrap();
             let mut buf_reader = BufReader::new(&client_accepted.0);
 
@@ -124,7 +125,10 @@ impl Server {
             let peer_ref = Arc::clone(peers.last().unwrap());
             let tx = sender.clone();
             tx.send(MessageResult::new(
-                Ok(format!("🍍 У нас новенький, поприветствуйте {} 🍍\n", peer_ref.name)),
+                Ok(format!(
+                    "🌟 У нас новенький, поприветствуйте {} 🌟\n",
+                    peer_ref.name
+                )),
                 &peer_ref,
             ))
             .unwrap();

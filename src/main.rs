@@ -1,12 +1,10 @@
 use clap;
-use log::*;
 use mean_capybara::client::Client;
 use mean_capybara::misc::AskInput;
 use mean_capybara::server::Server;
 use std::io::{self, Write};
 use std::sync::Arc;
 use std::thread;
-
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
@@ -15,22 +13,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut server;
 
     let options = clap::App::new("")
+        .after_help("Launch the program without the \"server\" argument to use it as a client.")
         .arg(
             clap::Arg::with_name("server")
                 .short("s")
                 .long("server")
                 .help("Launches the program in server mode.")
                 .takes_value(false)
+                .required(false)
+                .requires_all(&["address", "port"])
+        )
+        .arg(
+            clap::Arg::with_name("address")
+                .short("a")
+                .long("address")
+                .help("Address to bind the server on")
+                .takes_value(true)
+                .required(false)
+                .default_value("127.0.0.1"),
+        )
+        .arg(
+            clap::Arg::with_name("port")
+                .short("p")
+                .long("port")
+                .help("Port to bind the server on")
+                .takes_value(true)
                 .required(false),
         )
         .get_matches();
 
     if options.is_present("server") {
-        let mut addr = String::new();
+        let addr = options.value_of("address");
+        let port = options.value_of("port");
 
-        stdin.ask_input("Enter the addr:port to bind on: ", &mut addr)?;
+        if let None = addr.and(port) {
+            println!("Arguments \"address\" and \"port\" must be supplied.");
+            std::process::exit(1);
+        };
 
-        server = Server::bind(&addr[..addr.len() - 1])?;
+        server = Server::bind(format!("{}:{}", addr.unwrap(), port.unwrap()))?;
 
         server.handle_clients();
 
